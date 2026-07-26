@@ -1,0 +1,16 @@
+{
+  "name": "FlowTask 智能任务流转系统",
+  "short_name": "FlowTask",
+  "description": "高效任务流转、自动顺延与轻量级 To-Do 项目管理软件 (Windows 11 免安装绿包)",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F9FAFB",
+  "theme_color": "#4F46E5",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+// Prisma Schema for FlowTask To-Do & Project Management System
+// Documenting data model & relations for backend implementation
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum TaskType {
+  PROJECT
+  TASK
+}
+
+enum TaskSource {
+  TEAMS
+  EMAIL
+  TICKET
+  MEETING
+  OTHER
+}
+
+enum TaskPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+model Item {
+  id             String       @id @default(uuid())
+  type           TaskType     @default(TASK)
+  parentId       String?      @map("parent_id")
+  title          String
+  description    String?
+  source         TaskSource   @default(OTHER)
+  priority       TaskPriority @default(MEDIUM)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  plannedDate    DateTime     @map("planned_date") // 核心：跨天未完成自动顺延依赖此字段
+  completedAt    DateTime?    @map("completed_at")
+  status         TaskStatus   @default(TODO)
+  rolloverCount  Int          @default(0) @map("rollover_count") // 顺延次数（仅针对 Task，用于 UI 警示）
+  
+  // 父子关联关系（Self-relation for Project & Sub-tasks）
+  parent         Item?        @relation("ProjectSubTasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subTasks       Item[]       @relation("ProjectSubTasks")
+
+  // 顺延历史日志关联
+  rolloverLogs   RolloverLog[]
+
+  @@index([plannedDate, status])
+  @@index([parentId])
+  @@map("items")
+}
+
+model RolloverLog {
+  id          String   @id @default(uuid())
+  itemId      String   @map("item_id")
+  fromDate    DateTime @map("from_date")
+  toDate      DateTime @map("to_date")
+  dateRolled  DateTime @default(now()) @map("date_rolled")
+  reason      String?
+
+  item        Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
+  @@map("rollover_logs")
+}

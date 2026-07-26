@@ -1,0 +1,6 @@
+{
+  "name": "Clear Do",
+  "description": "极简高效的 To-Do 与项目管理系统",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
