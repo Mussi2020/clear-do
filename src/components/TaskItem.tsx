@@ -1,26 +1,23 @@
 import React, { useState } from 'react';
 import { 
   CheckCircle2, 
-  Circle, 
-  Clock, 
   AlertTriangle, 
   Trash2, 
   Edit3, 
-  Calendar, 
-  Tag, 
-  Flag, 
   MoreHorizontal,
   History,
-  XCircle,
   Folder,
   Paperclip,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  User,
+  Share2
 } from 'lucide-react';
-import { TaskItemData, TaskStatus, TaskAttachment } from '../types';
-import { formatDateHuman, daysBetween, getTodayStr } from '../utils/dateUtils';
+import { TaskItemData, TaskStatus, TaskAttachment, TaskSource, TaskPriority } from '../types';
+import { daysBetween, getTodayStr } from '../utils/dateUtils';
 import { AttachmentSection } from './Attachments/AttachmentSection';
 import { AttachmentPreviewModal } from './Modals/AttachmentPreviewModal';
+import { LinkifiedText } from './LinkifiedText';
 
 interface TaskItemProps {
   task: TaskItemData;
@@ -48,7 +45,6 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   const attachments = task.attachments || [];
   const attachmentCount = attachments.length;
 
-  // Clean Utility Macaron Pastel Pill Tag Styles
   const sourceMacaronStyles: Record<string, string> = {
     Teams: 'bg-[#E0E7FF] text-[#4338CA]',
     Email: 'bg-[#DBEAFE] text-[#1E40AF]',
@@ -70,11 +66,10 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   const todayStr = getTodayStr();
   const durationDays = daysBetween(createdDateStr, todayStr);
 
-  // Rollover Warning Badge Logic
   const renderRolloverBadge = (count: number) => {
     if (count <= 0) return null;
     return (
-      <div className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-md flex items-center gap-1 shrink-0 shadow-2xs">
+      <div className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded flex items-center gap-1 shrink-0 shadow-2xs">
         <AlertTriangle className="w-3 h-3 text-amber-600" />
         <span>Rolled {count}d</span>
       </div>
@@ -82,7 +77,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   };
 
   return (
-    <div className={`group bg-white border border-slate-200/90 rounded-lg py-2 px-3 flex items-center gap-2.5 hover:border-indigo-300 hover:shadow-2xs transition-all ${
+    <div className={`group bg-white border border-slate-200/90 rounded-lg py-2 px-3 flex items-start gap-2.5 hover:border-indigo-300 hover:shadow-2xs transition-all ${
       isDone ? 'opacity-60 grayscale-[0.2] bg-slate-50/50' : isCancelled ? 'opacity-40' : ''
     }`}>
       {/* Checkbox */}
@@ -91,7 +86,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           const nextStatus: TaskStatus = isDone ? 'Todo' : 'Done';
           onUpdateStatus(task.id, nextStatus);
         }}
-        className="cursor-pointer shrink-0 text-slate-300 hover:text-indigo-600 transition-colors"
+        className="mt-0.5 cursor-pointer shrink-0 text-slate-300 hover:text-indigo-600 transition-colors"
         title={`Status: ${task.status} (Click to toggle)`}
       >
         {isDone ? (
@@ -107,33 +102,70 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
       {/* Main Content Area */}
       <div className="flex-1 min-w-0">
+        {/* Line 1: Task Title & Parent Project */}
         <div className="flex items-center gap-2 flex-wrap leading-tight">
-          <span className={`font-medium text-sm break-words ${
-            isDone ? 'line-through text-slate-400' : 'text-slate-800'
-          }`}>
+          <span
+            onClick={() => onEditTask(task)}
+            className={`font-semibold text-sm break-words cursor-pointer hover:text-indigo-600 transition-colors ${
+              isDone ? 'line-through text-slate-400' : 'text-slate-800'
+            }`}
+            title="点击查看/编辑任务详情与备注"
+          >
             {task.title}
           </span>
 
-          {/* Source Macaron Capsule Tag */}
-          <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded uppercase tracking-wider ${
-            sourceMacaronStyles[task.source] || sourceMacaronStyles.Other
-          }`}>
-            {task.source}
-          </span>
+          {parentProjectName && (
+            <span className="flex items-center gap-0.5 font-medium text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded text-[10px]">
+              <Folder className="w-2.5 h-2.5 text-slate-400" />
+              <span>{parentProjectName}</span>
+            </span>
+          )}
+        </div>
 
-          {/* Priority Quick Dropdown */}
+        {/* Line 2: Date (No "创建于:"), Source Dropdown, Priority Dropdown, Duration, Attachments, Requester/Handler */}
+        <div className="text-[11px] text-slate-400 mt-1 flex flex-wrap items-center gap-2 leading-none">
+          {/* Direct Date (e.g. 2026-07-27) */}
+          <span className="font-medium text-slate-500">{createdDateStr}</span>
+
+          <span>•</span>
+
+          {/* Source Quick Select Dropdown */}
+          <div className="relative inline-flex items-center bg-slate-50 hover:bg-slate-100 border border-slate-200/80 px-1.5 py-0.2 rounded">
+            <select
+              value={task.source}
+              onChange={(e) => {
+                e.stopPropagation();
+                const newSource = e.target.value as TaskSource;
+                if (onUpdateTask) {
+                  onUpdateTask({ ...task, source: newSource });
+                }
+              }}
+              className={`bg-transparent focus:outline-none cursor-pointer text-[9px] font-extrabold uppercase tracking-wider ${
+                sourceMacaronStyles[task.source] || sourceMacaronStyles.Other
+              }`}
+              title="点击更改来源"
+            >
+              <option value="Teams">TEAMS</option>
+              <option value="Email">EMAIL</option>
+              <option value="Ticket">TICKET</option>
+              <option value="Meeting">MEETING</option>
+              <option value="Other">OTHER</option>
+            </select>
+          </div>
+
+          {/* Priority Quick Select Dropdown */}
           <div className="relative inline-flex items-center gap-1 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 px-1.5 py-0.2 rounded text-[10px] font-medium text-slate-700">
             <span className={`w-1.5 h-1.5 rounded-full ${priorityDots[task.priority] || priorityDots.Medium}`} />
             <select
               value={task.priority}
               onChange={(e) => {
                 e.stopPropagation();
-                const newPriority = e.target.value as 'High' | 'Medium' | 'Low';
+                const newPriority = e.target.value as TaskPriority;
                 if (onUpdateTask) {
                   onUpdateTask({ ...task, priority: newPriority });
                 }
               }}
-              className="bg-transparent focus:outline-none cursor-pointer font-bold text-slate-700"
+              className="bg-transparent focus:outline-none cursor-pointer font-bold text-slate-700 text-[10px]"
               title="点击快速更改优先级"
             >
               <option value="High">High</option>
@@ -141,19 +173,12 @@ export const TaskItem: React.FC<TaskItemProps> = ({
               <option value="Low">Low</option>
             </select>
           </div>
-        </div>
 
-        {/* Sub-line metadata */}
-        <div className="text-[11px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-2 leading-none">
-          {parentProjectName && (
-            <span className="flex items-center gap-0.5 font-medium text-slate-500 bg-slate-100 px-1 py-0.2 rounded text-[10px]">
-              <Folder className="w-2.5 h-2.5 text-slate-400" />
-              <span>{parentProjectName}</span>
-            </span>
-          )}
-          <span>创建于: {createdDateStr}</span>
           <span>•</span>
+
+          {/* Duration */}
           <span className="font-medium text-indigo-600/90">持续 {durationDays} 天</span>
+
           {task.completed_at && (
             <span className="text-emerald-600 font-medium">• 已完结: {task.completed_at}</span>
           )}
@@ -174,11 +199,30 @@ export const TaskItem: React.FC<TaskItemProps> = ({
               showAttachments ? <ChevronUp className="w-2.5 h-2.5 ml-0.5" /> : <ChevronDown className="w-2.5 h-2.5 ml-0.5" />
             )}
           </button>
+
+          {/* Requester & Handler Badges */}
+          {(task.requester || task.handler) && (
+            <span className="inline-flex items-center gap-1.5 px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded text-[10px]">
+              {task.requester && (
+                <span className="flex items-center gap-0.5" title="需求人/部门">
+                  <User className="w-2.5 h-2.5 text-indigo-500" />
+                  <span>{task.requester}</span>
+                </span>
+              )}
+              {task.requester && task.handler && <span>/</span>}
+              {task.handler && (
+                <span className="flex items-center gap-0.5" title="传递人/部门">
+                  <Share2 className="w-2.5 h-2.5 text-amber-500" />
+                  <span>{task.handler}</span>
+                </span>
+              )}
+            </span>
+          )}
         </div>
 
         {/* Expandable Attachment Panel */}
         {showAttachments && (
-          <div className="mt-3 pt-2.5 border-t border-slate-100 animate-in fade-in duration-150">
+          <div className="mt-2.5 pt-2 border-t border-slate-100 animate-in fade-in duration-150">
             <AttachmentSection
               attachments={attachments}
               compact={true}
@@ -206,9 +250,8 @@ export const TaskItem: React.FC<TaskItemProps> = ({
       {/* Rollover Warning Badge */}
       {renderRolloverBadge(task.rollover_count)}
 
-      {/* Hover Control Buttons */}
-      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 shrink-0">
-        {/* Status Dropdown */}
+      {/* Hover Action Buttons */}
+      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 mt-0.5">
         <div className="relative">
           <button
             onClick={() => setShowStatusMenu(!showStatusMenu)}
@@ -225,7 +268,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
                   onUpdateStatus(task.id, 'Todo');
                   setShowStatusMenu(false);
                 }}
-                className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 cursor-pointer"
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 cursor-pointer font-medium"
               >
                 未开始 (Todo)
               </button>
@@ -234,7 +277,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
                   onUpdateStatus(task.id, 'In Progress');
                   setShowStatusMenu(false);
                 }}
-                className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-indigo-600 cursor-pointer"
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-amber-600 cursor-pointer font-medium"
               >
                 进行中 (In Progress)
               </button>
@@ -243,7 +286,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
                   onUpdateStatus(task.id, 'Done');
                   setShowStatusMenu(false);
                 }}
-                className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-emerald-600 cursor-pointer"
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-emerald-600 cursor-pointer font-medium"
               >
                 已完成 (Done)
               </button>
@@ -252,7 +295,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
                   onUpdateStatus(task.id, 'Cancelled');
                   setShowStatusMenu(false);
                 }}
-                className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-400 cursor-pointer"
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-400 cursor-pointer font-medium"
               >
                 已取消 (Cancelled)
               </button>
@@ -260,7 +303,6 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           )}
         </div>
 
-        {/* History log */}
         {task.rollover_count > 0 && onOpenHistory && (
           <button
             onClick={() => onOpenHistory(task)}
@@ -271,7 +313,6 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           </button>
         )}
 
-        {/* Edit */}
         <button
           onClick={() => onEditTask(task)}
           className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
@@ -280,7 +321,6 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           <Edit3 className="w-4 h-4" />
         </button>
 
-        {/* Delete */}
         <button
           onClick={() => onDeleteTask(task.id)}
           className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"

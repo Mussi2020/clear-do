@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ViewMode, TaskItemData, TaskStatus, TaskSource, TaskPriority, TaskAttachment } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import { ViewMode, TaskItemData, TaskStatus, TaskSource, TaskPriority, TaskAttachment, SettingsState } from './types';
 import { 
   getStoredItems, 
   saveStoredItems, 
@@ -15,13 +15,17 @@ import { ProjectsView } from './components/Views/ProjectsView';
 import { RolloverView } from './components/Views/RolloverView';
 import { ReportsView } from './components/Views/ReportsView';
 import { ExportView } from './components/Views/ExportView';
+import { MonitorSidebar } from './components/MonitorSidebar';
 
+import { NewTaskModal } from './components/Modals/NewTaskModal';
 import { TaskModal } from './components/Modals/TaskModal';
+import { SettingsModal } from './components/Modals/SettingsModal';
 import { TimeMachineModal } from './components/Modals/TimeMachineModal';
 import { WindowsGuideModal } from './components/Modals/WindowsGuideModal';
-import { FontSettingsModal, FontFamilyOption, FontSizeOption, DensityOption } from './components/Modals/FontSettingsModal';
-import { QuickAddInput } from './components/QuickAddInput';
-import { Sparkles, X } from 'lucide-react';
+import { parseCsvToTasks, exportTasksToCsv } from './utils/csvUtils';
+import { Sparkles, X, BarChart3, ChevronLeft } from 'lucide-react';
+
+const SYNC_CHANNEL_NAME = 'clear_do_v2_sync_channel';
 
 export function App() {
   const [items, setItems] = useState<TaskItemData[]>([]);
@@ -33,15 +37,24 @@ export function App() {
   // Today rolled notification counter
   const [todayRolledCount, setTodayRolledCount] = useState<number>(0);
 
-  // Typography & Density Preference state
-  const [fontFamily, setFontFamily] = useState<FontFamilyOption>(() => {
-    return (localStorage.getItem('clear_do_font_family') as FontFamilyOption) || 'system';
-  });
-  const [fontSize, setFontSize] = useState<FontSizeOption>(() => {
-    return (localStorage.getItem('clear_do_font_size') as FontSizeOption) || 'base';
-  });
-  const [density, setDensity] = useState<DensityOption>(() => {
-    return (localStorage.getItem('clear_do_density') as DensityOption) || 'compact';
+  // System Settings state
+  const [settings, setSettings] = useState<SettingsState>(() => {
+    const saved = localStorage.getItem('clear_do_settings');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse settings', e);
+      }
+    }
+    return {
+      language: 'zh',
+      fontFamily: 'system',
+      fontSize: 'base',
+      density: 'compact',
+      monitorWidth: 300,
+      activeWidgets: ['today', 'last_month', 'this_month', 'open_by_priority', 'task_rolled'],
+    };
   });
 
   // Resizable Sidebar State
@@ -49,24 +62,45 @@ export function App() {
     const saved = localStorage.getItem('clear_do_sidebar_width');
     return saved ? parseInt(saved, 10) : 240;
   });
-  const [isResizing, setIsResizing] = useState<boolean>(false);
+  const [isResizingSidebar, setIsResizingSidebar] = useState<boolean>(false);
+
+  // Monitor Sidebar Toggle State
+  const [monitorVisible, setMonitorVisible] = useState<boolean>(true);
+
+  // Modals state
+  const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isTimeMachineOpen, setIsTimeMachineOpen] = useState(false);
+  const [isWindowsGuideOpen, setIsWindowsGuideOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<TaskItemData | null>(null);
+
+  // Global toast banner
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+
+  // Save Settings
+  useEffect(() => {
+    localStorage.setItem('clear_do_settings', JSON.stringify(settings));
+  }, [settings]);
 
   useEffect(() => {
     localStorage.setItem('clear_do_sidebar_width', sidebarWidth.toString());
   }, [sidebarWidth]);
 
+  // Sidebar drag width handler
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
+      if (!isResizingSidebar) return;
       const newWidth = Math.min(Math.max(e.clientX, 180), 450);
       setSidebarWidth(newWidth);
     };
 
     const handleMouseUp = () => {
-      setIsResizing(false);
+      setIsResizingSidebar(false);
     };
 
-    if (isResizing) {
+    if (isResizingSidebar) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
@@ -74,29 +108,57 @@ export function App() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isResizing]);
+  }, [isResizingSidebar]);
 
-  // Modals state
-  const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
-  const [isTimeMachineOpen, setIsTimeMachineOpen] = useState(false);
-  const [isWindowsGuideOpen, setIsWindowsGuideOpen] = useState(false);
-  const [isFontSettingsOpen, setIsFontSettingsOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<TaskItemData | null>(null);
-
-  // Global toast banner
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
+  // Multi-instance Synchronization (BroadcastChannel + LocalStorage event)
   useEffect(() => {
-    localStorage.setItem('clear_do_font_family', fontFamily);
-  }, [fontFamily]);
+    try {
+      const bc = new BroadcastChannel(SYNC_CHANNEL_NAME);
+      broadcastChannelRef.current = bc;
 
-  useEffect(() => {
-    localStorage.setItem('clear_do_font_size', fontSize);
-  }, [fontSize]);
+      bc.onmessage = (event) => {
+        if (event.data && event.data.type === 'SYNC_TASKS') {
+          setItems(event.data.payload);
+          setToastMessage('🔄 发现其他窗口更新，已实时同步数据！');
+          setTimeout(() => setToastMessage(null), 3000);
+        }
+      };
+    } catch (e) {
+      console.warn('BroadcastChannel not supported in iframe', e);
+    }
 
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'clear_do_tasks_v2' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setItems(parsed);
+        } catch (err) {
+          console.error('Storage sync error', err);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      if (broadcastChannelRef.current) {
+        broadcastChannelRef.current.close();
+      }
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  // Keyboard shortcut Ctrl+K to open New Task Modal
   useEffect(() => {
-    localStorage.setItem('clear_do_density', density);
-  }, [density]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsNewTaskModalOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Compute effective virtual today string based on real date + dayOffset
   const realTodayStr = getTodayStr();
@@ -115,10 +177,17 @@ export function App() {
     }
   }, [dayOffset]);
 
-  // Persist items
-  const updateItemsAndPersist = (newItems: TaskItemData[]) => {
+  // Persist items & broadcast sync to other open tabs
+  const updateItemsAndPersist = (newItems: TaskItemData[], notifySync = true) => {
     setItems(newItems);
     saveStoredItems(newItems);
+
+    if (notifySync && broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({
+        type: 'SYNC_TASKS',
+        payload: newItems,
+      });
+    }
   };
 
   // Trigger manual rollover check or simulator
@@ -175,7 +244,7 @@ export function App() {
     updateItemsAndPersist(finalItems);
   };
 
-  // Add Item
+  // Add Item from NewTaskModal
   const handleAddItem = (newItemData: {
     type: 'project' | 'task';
     title: string;
@@ -183,6 +252,9 @@ export function App() {
     priority: TaskPriority;
     parentId: string | null;
     plannedDate: string;
+    requester?: string;
+    handler?: string;
+    description?: string;
     attachments?: TaskAttachment[];
   }) => {
     const newItem: TaskItemData = {
@@ -192,6 +264,9 @@ export function App() {
       title: newItemData.title,
       source: newItemData.source,
       priority: newItemData.priority,
+      requester: newItemData.requester,
+      handler: newItemData.handler,
+      description: newItemData.description,
       created_at: effectiveTodayStr,
       planned_date: newItemData.plannedDate,
       completed_at: null,
@@ -230,6 +305,40 @@ export function App() {
     setEditingTask(null);
   };
 
+  // CSV Export Trigger
+  const handleExportCsv = () => {
+    const csvContent = exportTasksToCsv(items);
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `ClearDo_Tasks_Backup_${effectiveTodayStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setToastMessage('✅ CSV 数据包导出成功！');
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // CSV Import Handler
+  const handleImportCsvText = (csvText: string) => {
+    const importedTasks = parseCsvToTasks(csvText);
+    if (importedTasks.length === 0) {
+      setToastMessage('⚠️ CSV 解析未发现有效任务，请检查列名称');
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+
+    // Merge without duplicates by ID
+    const existingIds = new Set(items.map((i) => i.id));
+    const newAdditions = importedTasks.filter((t) => !existingIds.has(t.id));
+    const merged = [...newAdditions, ...items];
+
+    updateItemsAndPersist(merged);
+    setToastMessage(`🎉 成功导入 ${importedTasks.length} 条历史 Task 项！`);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
   // Reset Demo Data
   const handleResetDemoData = () => {
     if (window.confirm('确定重置为演示数据集吗？')) {
@@ -244,7 +353,7 @@ export function App() {
 
   // Font classes mapping
   const getFontFamilyClass = () => {
-    switch (fontFamily) {
+    switch (settings.fontFamily) {
       case 'serif': return 'font-serif';
       case 'mono': return 'font-mono';
       case 'sans': return 'font-sans tracking-tight';
@@ -253,7 +362,7 @@ export function App() {
   };
 
   const getFontSizeClass = () => {
-    switch (fontSize) {
+    switch (settings.fontSize) {
       case 'sm': return 'text-[13px]';
       case 'lg': return 'text-[15px]';
       case 'xl': return 'text-[16px]';
@@ -262,17 +371,20 @@ export function App() {
   };
 
   return (
-    <div className={`flex h-screen bg-[#F9FAFB] text-slate-800 antialiased overflow-hidden select-none ${getFontFamilyClass()} ${getFontSizeClass()}`}>
+    <div className={`flex h-screen bg-[#F8FAFC] text-slate-800 antialiased overflow-hidden select-none ${getFontFamilyClass()} ${getFontSizeClass()}`}>
       {/* Left Sidebar */}
       <Sidebar
         currentView={currentView}
         onSelectView={setCurrentView}
         items={items}
-        onOpenQuickAdd={() => setIsQuickAddModalOpen(true)}
+        onOpenNewTask={() => setIsNewTaskModalOpen(true)}
         onOpenTimeMachine={() => setIsTimeMachineOpen(true)}
-        onOpenFontSettings={() => setIsFontSettingsOpen(true)}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onToggleMonitor={() => setMonitorVisible(!monitorVisible)}
         onResetData={handleResetDemoData}
         todayRolledCount={todayRolledCount}
+        monitorVisible={monitorVisible}
+        language={settings.language}
         width={sidebarWidth}
       />
 
@@ -280,10 +392,10 @@ export function App() {
       <div
         onMouseDown={(e) => {
           e.preventDefault();
-          setIsResizing(true);
+          setIsResizingSidebar(true);
         }}
         className={`w-1.5 hover:w-2 hover:bg-indigo-500/50 cursor-col-resize shrink-0 transition-all z-30 select-none group relative ${
-          isResizing ? 'bg-indigo-600 w-2' : 'bg-transparent border-r border-slate-200'
+          isResizingSidebar ? 'bg-indigo-600 w-2' : 'bg-transparent border-r border-slate-200'
         }`}
         title="拖拽调节侧边栏宽度"
       >
@@ -294,7 +406,7 @@ export function App() {
       <main className="flex-1 flex flex-col h-screen overflow-y-auto min-w-0">
         {/* Global Toast */}
         {toastMessage && (
-          <div className="mx-6 mt-4 p-3 bg-slate-900 text-white rounded-2xl shadow-lg border border-slate-800 flex items-center justify-between text-xs animate-fadeIn shrink-0">
+          <div className="mx-6 mt-4 p-3 bg-slate-900 text-white rounded-2xl shadow-lg border border-slate-800 flex items-center justify-between text-xs animate-fadeIn shrink-0 z-40">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
               <span>{toastMessage}</span>
@@ -309,7 +421,7 @@ export function App() {
         )}
 
         {/* View Switcher Container */}
-        <div className={`flex-1 ${density === 'compact' ? 'p-4' : 'p-6'}`}>
+        <div className={`flex-1 ${settings.density === 'compact' ? 'p-4' : 'p-6'}`}>
           {currentView === 'today' && (
             <TodayView
               items={items}
@@ -320,6 +432,7 @@ export function App() {
               onOpenHistory={setEditingTask}
               todayRolledCount={todayRolledCount}
               onTriggerRolloverCheck={() => handleTriggerRolloverCheck()}
+              language={settings.language}
             />
           )}
 
@@ -352,24 +465,45 @@ export function App() {
           )}
 
           {currentView === 'export' && (
-            <ExportView items={items} />
+            <ExportView
+              items={items}
+              onImportItems={(imported) => updateItemsAndPersist(imported)}
+            />
           )}
         </div>
       </main>
 
-      {/* Modals */}
-      {isQuickAddModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="w-full max-w-xl">
-            <QuickAddInput
-              onAddItem={handleAddItem}
-              existingProjects={items.filter((i) => i.type === 'project')}
-              autoFocus
-              onCloseModal={() => setIsQuickAddModalOpen(false)}
-            />
-          </div>
-        </div>
+      {/* Modular Monitor Sidebar on Right (Requirement 1) */}
+      {monitorVisible ? (
+        <MonitorSidebar
+          items={items}
+          settings={settings}
+          onUpdateSettings={(newPartial) => setSettings({ ...settings, ...newPartial })}
+          onClose={() => setMonitorVisible(false)}
+        />
+      ) : (
+        /* Floating Sticky Toggle Button on Right Edge when Sidebar is Closed */
+        <button
+          onClick={() => setMonitorVisible(true)}
+          className="fixed right-0 top-1/2 -translate-y-1/2 bg-slate-900 hover:bg-indigo-700 text-white py-3 px-2 rounded-l-xl shadow-xl flex flex-col items-center gap-2 z-40 transition-all cursor-pointer border-l border-t border-b border-slate-700 group animate-pulse hover:animate-none"
+          title="点击滑出侧边数据看板 (Monitor Sidebar)"
+        >
+          <BarChart3 className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+          <span className="text-[10px] font-extrabold tracking-widest uppercase [writing-mode:vertical-lr] text-slate-200">
+            看板
+          </span>
+          <ChevronLeft className="w-3.5 h-3.5 text-indigo-300" />
+        </button>
       )}
+
+      {/* Modals */}
+      <NewTaskModal
+        isOpen={isNewTaskModalOpen}
+        onClose={() => setIsNewTaskModalOpen(false)}
+        onAddTask={handleAddItem}
+        existingProjects={items.filter((i) => i.type === 'project')}
+        language={settings.language}
+      />
 
       <TaskModal
         task={editingTask}
@@ -377,6 +511,15 @@ export function App() {
         onClose={() => setEditingTask(null)}
         onSave={handleSaveEditedTask}
         existingProjects={items.filter((i) => i.type === 'project')}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        settings={settings}
+        onUpdateSettings={(newPartial) => setSettings({ ...settings, ...newPartial })}
+        onRunRolloverNow={() => handleTriggerRolloverCheck()}
+        onOpenTimeMachine={() => setIsTimeMachineOpen(true)}
       />
 
       <TimeMachineModal
@@ -391,17 +534,6 @@ export function App() {
       <WindowsGuideModal
         isOpen={isWindowsGuideOpen}
         onClose={() => setIsWindowsGuideOpen(false)}
-      />
-
-      <FontSettingsModal
-        isOpen={isFontSettingsOpen}
-        onClose={() => setIsFontSettingsOpen(false)}
-        fontFamily={fontFamily}
-        onChangeFontFamily={setFontFamily}
-        fontSize={fontSize}
-        onChangeFontSize={setFontSize}
-        density={density}
-        onChangeDensity={setDensity}
       />
     </div>
   );

@@ -26,6 +26,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [status, setStatus] = useState<TaskStatus>('Todo');
   const [parentId, setParentId] = useState<string | null>(null);
   const [plannedDate, setPlannedDate] = useState('');
+  const [requester, setRequester] = useState('');
+  const [handler, setHandler] = useState('');
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [previewAttachment, setPreviewAttachment] = useState<TaskAttachment | null>(null);
   const [showHistoryTab, setShowHistoryTab] = useState(false);
@@ -39,6 +41,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setStatus(task.status);
       setParentId(task.parent_id);
       setPlannedDate(task.planned_date);
+      setRequester(task.requester || '');
+      setHandler(task.handler || '');
       setAttachments(task.attachments || []);
     }
   }, [task]);
@@ -58,6 +62,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       status,
       parent_id: parentId,
       planned_date: plannedDate,
+      requester: requester.trim() || undefined,
+      handler: handler.trim() || undefined,
       attachments,
       completed_at: status === 'Done' ? (task.completed_at || new Date().toISOString().split('T')[0]) : null,
     });
@@ -208,6 +214,31 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     <option value="Medium">中 (Medium)</option>
                     <option value="Low">低 (Low)</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Requester & Handler Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">需求人 / 部门 (Requester)</label>
+                  <input
+                    type="text"
+                    value={requester}
+                    onChange={(e) => setRequester(e.target.value)}
+                    placeholder="如: HR / 张三"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">传递人 / 部门 (Handler)</label>
+                  <input
+                    type="text"
+                    value={handler}
+                    onChange={(e) => setHandler(e.target.value)}
+                    placeholder="如: IT / 李四"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                  />
                 </div>
               </div>
 

@@ -84,6 +84,10 @@ export function getDateRangeBoundaries(range: DateFilterRange, customStart?: str
   };
 
   switch (range) {
+    case 'today': {
+      const todayStr = format(today);
+      return [todayStr, todayStr];
+    }
     case 'this_week': {
       // Assuming Monday is start of week
       const currentDay = today.getDay(); // 0 is Sunday

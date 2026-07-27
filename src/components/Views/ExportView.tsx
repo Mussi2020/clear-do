@@ -1,14 +1,19 @@
-import React, { useState } from 'react';
-import { Download, FileSpreadsheet, CheckCircle2, Filter, Calendar } from 'lucide-react';
-import { TaskItemData, DateFilterRange, TaskSource } from '../../types';
+import React, { useRef, useState } from 'react';
+import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { TaskItemData, DateFilterRange } from '../../types';
 import { filterTasksForExport, generateCSVContent, downloadCSVFile, ExportOptions } from '../../utils/exportUtils';
+import { parseCsvToTasks } from '../../utils/csvUtils';
 import { getTodayStr } from '../../utils/dateUtils';
 
 interface ExportViewProps {
   items: TaskItemData[];
+  onImportItems?: (importedItems: TaskItemData[]) => void;
 }
 
-export const ExportView: React.FC<ExportViewProps> = ({ items }) => {
+export const ExportView: React.FC<ExportViewProps> = ({ items, onImportItems }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const [options, setOptions] = useState<ExportOptions>({
     dateRange: 'all',
     customStartDate: '',
@@ -27,17 +32,103 @@ export const ExportView: React.FC<ExportViewProps> = ({ items }) => {
     downloadCSVFile(filename, csvContent);
   };
 
+  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (content) {
+        try {
+          const parsed = parseCsvToTasks(content);
+          if (parsed.length > 0) {
+            if (onImportItems) {
+              onImportItems(parsed);
+            }
+            setImportStatus({
+              type: 'success',
+              message: `成功解析并导入 ${parsed.length} 条任务数据（已完成向下兼容映射与合并）。`,
+            });
+          } else {
+            setImportStatus({
+              type: 'error',
+              message: '未能从 CSV 文件中解析出有效的任务数据。',
+            });
+          }
+        } catch (err) {
+          setImportStatus({
+            type: 'error',
+            message: 'CSV 文件解析失败，请检查数据格式。',
+          });
+        }
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+    if (e.target) e.target.value = '';
+  };
+
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-2">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-          <Download className="w-6 h-6 text-indigo-600" />
-          <span>Export Work Reports (CSV/Excel)</span>
+          <FileSpreadsheet className="w-6 h-6 text-indigo-600" />
+          <span>数据备份与导入导出 (Data Import & Export)</span>
         </h1>
         <p className="text-xs text-slate-500">
-          支持自定义时间范围、来源筛选、父子层级导出。带 UTF-8 BOM 编码，完美兼容 Microsoft Excel 中文展示。
+          全面支持任务 CSV 格式的灵活导出与历史备份恢复导入。内置 UTF-8 BOM 兼容模式，保证 Excel 无乱码。
         </p>
+      </div>
+
+      {/* CSV Import Module Card */}
+      <div className="bg-white p-6 rounded-xl border border-indigo-100 shadow-2xs space-y-4 bg-linear-to-r from-indigo-50/30 to-white">
+        <div className="flex items-center justify-between border-b border-indigo-100/60 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
+              <Upload className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">导入 CSV 数据 (CSV Import)</h2>
+              <p className="text-[11px] text-slate-500">
+                支持导入本地 CSV 报表。即使字段存在缺失，系统将自动补齐并向下兼容恢复。
+              </p>
+            </div>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            onChange={handleCsvUpload}
+            className="hidden"
+          />
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+          >
+            <Upload className="w-4 h-4" />
+            <span>选择 CSV 文件导入</span>
+          </button>
+        </div>
+
+        {importStatus && (
+          <div
+            className={`p-3 rounded-lg text-xs font-medium flex items-center gap-2 ${
+              importStatus.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : 'bg-rose-50 text-rose-800 border border-rose-200'
+            }`}
+          >
+            {importStatus.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{importStatus.message}</span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

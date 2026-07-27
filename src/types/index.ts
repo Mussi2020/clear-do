@@ -39,11 +39,40 @@ export interface TaskItemData {
   rollover_history: RolloverLog[];
   tags?: string[];
   attachments?: TaskAttachment[];
+  requester?: string; // 需求人/部门
+  handler?: string;   // 传递人员/部门
 }
 
 export type ViewMode = 'today' | 'projects' | 'reports' | 'export' | 'rollover';
 
-export type DateFilterRange = 'this_week' | 'this_month' | 'this_quarter' | 'this_year' | 'all' | 'custom';
+export type DateFilterRange = 'today' | 'this_week' | 'this_month' | 'this_quarter' | 'this_year' | 'all' | 'custom';
+
+export type LanguageCode = 'zh' | 'en';
+
+export type FontFamilyType = 'sans' | 'serif' | 'mono' | 'inter';
+
+export type FontSizeScale = 'compact' | 'normal' | 'large';
+
+export type ThemeColorName = 'red' | 'indigo' | 'slate' | 'emerald';
+
+export type MonitorWidgetType = 
+  | 'today' 
+  | 'last_month' 
+  | 'this_month' 
+  | 'open_by_priority' 
+  | 'task_rolled';
+
+export interface SettingsState {
+  language: LanguageCode;
+  fontFamily: FontFamilyType;
+  fontSize: FontSizeScale;
+  themeColor: ThemeColorName;
+  autoRolloverEnabled: boolean;
+  rolloverTime: string;
+  monitorVisible: boolean;
+  monitorWidth: number;
+  activeWidgets: MonitorWidgetType[];
+}
 
 export interface ReportStats {
   totalTasks: number;
