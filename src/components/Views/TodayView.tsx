@@ -20,19 +20,14 @@ interface TodayViewProps {
   onUpdateStatus: (id: string, status: TaskStatus) => void;
   onDeleteItem: (id: string) => void;
   onEditItem: (item: TaskItemData) => void;
-  onAddItem: (newItem: {
-    type: 'project' | 'task';
-    title: string;
-    source: TaskSource;
-    priority: TaskPriority;
-    parentId: string | null;
-    plannedDate: string;
-  }) => void;
+  onAddItem: (newItem: any) => void;
   onOpenHistory: (task: TaskItemData) => void;
   todayRolledCount: number;
   onTriggerRolloverCheck: () => void;
   filterViewMode?: 'today' | 'rollover';
   language?: LanguageCode;
+  externalPriorityFilter?: string | null;
+  externalClosedFilter?: string | null;
 }
 
 export const TodayView: React.FC<TodayViewProps> = ({
@@ -46,6 +41,8 @@ export const TodayView: React.FC<TodayViewProps> = ({
   onTriggerRolloverCheck,
   filterViewMode = 'today',
   language = 'zh',
+  externalPriorityFilter,
+  externalClosedFilter,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSource, setFilterSource] = useState<string>('all');
@@ -55,6 +52,22 @@ export const TodayView: React.FC<TodayViewProps> = ({
 
   // Filter modes: 'active' (Default Open Tasks), or 'closed_today' | 'closed_week' | 'closed_month' | 'closed_quarter' | 'closed_year'
   const [closedQuickFilter, setClosedQuickFilter] = useState<'open' | 'closed_today' | 'closed_week' | 'closed_month' | 'closed_quarter' | 'closed_year'>('open');
+
+  React.useEffect(() => {
+    if (externalPriorityFilter) {
+      setFilterPriority(externalPriorityFilter);
+    } else if (externalPriorityFilter === null) {
+      setFilterPriority('all');
+    }
+  }, [externalPriorityFilter]);
+
+  React.useEffect(() => {
+    if (externalClosedFilter) {
+      if (['open', 'closed_today', 'closed_week', 'closed_month', 'closed_quarter', 'closed_year'].includes(externalClosedFilter)) {
+        setClosedQuickFilter(externalClosedFilter as any);
+      }
+    }
+  }, [externalClosedFilter]);
 
   const todayStr = getTodayStr();
 
@@ -164,6 +177,8 @@ export const TodayView: React.FC<TodayViewProps> = ({
             >
               <option value="all">来源: 全部</option>
               <option value="Teams">Teams</option>
+              <option value="WeCom">企业微信 (WeCom)</option>
+              <option value="PhoneChat">电话/聊天 (Phone/Chat)</option>
               <option value="Email">Email</option>
               <option value="Ticket">Ticket</option>
               <option value="Meeting">Meeting</option>
@@ -253,17 +268,24 @@ export const TodayView: React.FC<TodayViewProps> = ({
               </div>
             ) : (
               <div className="space-y-2">
-                {standaloneTasks.map((task) => (
-                  <TaskItem
-                    key={task.id}
-                    task={task}
-                    onUpdateStatus={onUpdateStatus}
-                    onDeleteTask={onDeleteItem}
-                    onEditTask={onEditItem}
-                    onOpenHistory={onOpenHistory}
-                    onUpdateTask={onEditItem}
-                  />
-                ))}
+                {[...standaloneTasks]
+                  .sort((a, b) => {
+                    const aDone = a.status === 'Done';
+                    const bDone = b.status === 'Done';
+                    if (aDone !== bDone) return aDone ? 1 : -1;
+                    return 0;
+                  })
+                  .map((task) => (
+                    <TaskItem
+                      key={task.id}
+                      task={task}
+                      onUpdateStatus={onUpdateStatus}
+                      onDeleteTask={onDeleteItem}
+                      onEditTask={onEditItem}
+                      onOpenHistory={onOpenHistory}
+                      onUpdateTask={onEditItem}
+                    />
+                  ))}
               </div>
             )}
           </>
@@ -302,10 +324,17 @@ export const TodayView: React.FC<TodayViewProps> = ({
 
           {isProjectGroupExpanded && (
             <div className="space-y-2">
-              {projects.map((proj) => {
-                const subTasks = filteredItems.filter(
-                  (i) => i.type === 'task' && i.parent_id === proj.id
-                );
+              {[...projects]
+                .sort((a, b) => {
+                  const aDone = a.status === 'Done';
+                  const bDone = b.status === 'Done';
+                  if (aDone !== bDone) return aDone ? 1 : -1;
+                  return 0;
+                })
+                .map((proj) => {
+                  const subTasks = filteredItems.filter(
+                    (i) => i.type === 'task' && i.parent_id === proj.id
+                  );
                 return (
                   <ProjectAccordion
                     key={proj.id}

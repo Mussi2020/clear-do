@@ -1,6 +1,6 @@
 export type TaskType = 'project' | 'task';
 
-export type TaskSource = 'Teams' | 'Email' | 'Ticket' | 'Meeting' | 'Other';
+export type TaskSource = 'Teams' | 'WeCom' | 'PhoneChat' | 'Email' | 'Ticket' | 'Meeting' | 'Other';
 
 export type TaskPriority = 'High' | 'Medium' | 'Low';
 

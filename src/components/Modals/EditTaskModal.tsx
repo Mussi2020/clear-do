@@ -99,6 +99,8 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none"
               >
                 <option value="Teams">Teams</option>
+                <option value="WeCom">企业微信 (WeCom)</option>
+                <option value="PhoneChat">电话/聊天 (Phone/Chat)</option>
                 <option value="Email">Email</option>
                 <option value="Ticket">Ticket</option>
                 <option value="Meeting">Meeting</option>

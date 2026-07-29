@@ -59,6 +59,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ items }) => {
   // Source breakdown data for Recharts
   const sourceCounts: Record<string, number> = {
     Teams: 0,
+    WeCom: 0,
+    PhoneChat: 0,
     Email: 0,
     Ticket: 0,
     Meeting: 0,
@@ -72,12 +74,22 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ items }) => {
     }
   });
 
+  const sourceLabels: Record<string, string> = {
+    Teams: 'Teams',
+    WeCom: '企微',
+    PhoneChat: '电话/聊天',
+    Email: 'Email',
+    Ticket: 'Ticket',
+    Meeting: 'Meeting',
+    Other: 'Other',
+  };
+
   const sourceChartData = Object.keys(sourceCounts).map((key) => ({
-    name: key,
+    name: sourceLabels[key] || key,
     count: sourceCounts[key],
   }));
 
-  const sourceColors = ['#6366F1', '#3B82F6', '#10B981', '#A855F7', '#64748B'];
+  const sourceColors = ['#6366F1', '#10B981', '#F97316', '#3B82F6', '#14B8A6', '#A855F7', '#64748B'];
 
   // Priority breakdown
   const priorityCounts = { High: 0, Medium: 0, Low: 0 };

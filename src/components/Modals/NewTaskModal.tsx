@@ -10,7 +10,8 @@ import { t } from '../../utils/i18n';
 interface NewTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (newTaskData: Omit<TaskItemData, 'id' | 'created_at' | 'completed_at' | 'status' | 'rollover_count' | 'rollover_history'>) => void;
+  onSave?: (newTaskData: Omit<TaskItemData, 'id' | 'created_at' | 'completed_at' | 'status' | 'rollover_count' | 'rollover_history'>) => void;
+  onAddTask?: (newTaskData: any) => void;
   existingProjects: TaskItemData[];
   language?: LanguageCode;
 }
@@ -19,6 +20,7 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  onAddTask,
   existingProjects,
   language = 'zh',
 }) => {
@@ -55,18 +57,26 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
     e.preventDefault();
     if (!title.trim()) return;
 
-    onSave({
+    const payload = {
       type,
       title: title.trim(),
       description: description.trim() || undefined,
       source,
       priority,
       parent_id: type === 'project' ? null : parentId,
+      parentId: type === 'project' ? null : parentId,
       requester: requester.trim() || undefined,
       handler: handler.trim() || undefined,
       planned_date: plannedDate || getTodayStr(),
+      plannedDate: plannedDate || getTodayStr(),
       attachments,
-    });
+    };
+
+    if (onSave) {
+      onSave(payload);
+    } else if (onAddTask) {
+      onAddTask(payload);
+    }
 
     onClose();
   };
@@ -176,6 +186,8 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer font-medium text-slate-700"
                 >
                   <option value="Teams">Teams</option>
+                  <option value="WeCom">企业微信 (WeCom)</option>
+                  <option value="PhoneChat">电话/聊天 (Phone/Chat)</option>
                   <option value="Email">Email 邮件</option>
                   <option value="Ticket">Ticket 工单</option>
                   <option value="Meeting">Meeting 会议</option>

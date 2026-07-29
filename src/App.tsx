@@ -64,8 +64,10 @@ export function App() {
   });
   const [isResizingSidebar, setIsResizingSidebar] = useState<boolean>(false);
 
-  // Monitor Sidebar Toggle State
+  // Monitor Sidebar Toggle & Filter States
   const [monitorVisible, setMonitorVisible] = useState<boolean>(true);
+  const [monitorPriorityFilter, setMonitorPriorityFilter] = useState<string | null>(null);
+  const [monitorClosedFilter, setMonitorClosedFilter] = useState<string | null>(null);
 
   // Modals state
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
@@ -245,30 +247,20 @@ export function App() {
   };
 
   // Add Item from NewTaskModal
-  const handleAddItem = (newItemData: {
-    type: 'project' | 'task';
-    title: string;
-    source: TaskSource;
-    priority: TaskPriority;
-    parentId: string | null;
-    plannedDate: string;
-    requester?: string;
-    handler?: string;
-    description?: string;
-    attachments?: TaskAttachment[];
-  }) => {
+  const handleAddItem = (newItemData: any) => {
+    const itemType = newItemData.type || 'task';
     const newItem: TaskItemData = {
-      id: `${newItemData.type}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      type: newItemData.type,
-      parent_id: newItemData.parentId,
-      title: newItemData.title,
-      source: newItemData.source,
-      priority: newItemData.priority,
+      id: `${itemType}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      type: itemType,
+      parent_id: newItemData.parent_id ?? newItemData.parentId ?? null,
+      title: newItemData.title || '新任务',
+      source: newItemData.source || 'Teams',
+      priority: newItemData.priority || 'Medium',
       requester: newItemData.requester,
       handler: newItemData.handler,
       description: newItemData.description,
       created_at: effectiveTodayStr,
-      planned_date: newItemData.plannedDate,
+      planned_date: newItemData.planned_date ?? newItemData.plannedDate ?? effectiveTodayStr,
       completed_at: null,
       status: 'Todo',
       rollover_count: 0,
@@ -277,7 +269,7 @@ export function App() {
     };
 
     updateItemsAndPersist([newItem, ...items]);
-    setToastMessage(`已创建${newItemData.type === 'project' ? '项目' : '任务'}: "${newItemData.title}"`);
+    setToastMessage(`🎉 已成功创建${itemType === 'project' ? '项目' : '任务'}: "${newItem.title}"`);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
@@ -433,6 +425,8 @@ export function App() {
               todayRolledCount={todayRolledCount}
               onTriggerRolloverCheck={() => handleTriggerRolloverCheck()}
               language={settings.language}
+              externalPriorityFilter={monitorPriorityFilter}
+              externalClosedFilter={monitorClosedFilter}
             />
           )}
 
@@ -467,7 +461,13 @@ export function App() {
           {currentView === 'export' && (
             <ExportView
               items={items}
-              onImportItems={(imported) => updateItemsAndPersist(imported)}
+              onImportItems={(imported) => {
+                // Merge/replace imported tasks and run auto-rollover check
+                const rolloverResult = executeAutoRollover(imported, effectiveTodayStr);
+                updateItemsAndPersist(rolloverResult.updatedItems);
+                setToastMessage(`✅ 数据导入成功！已导入/融合 ${imported.length} 条数据 (含 ${rolloverResult.rolledCount} 项自动顺延任务)`);
+                setTimeout(() => setToastMessage(null), 4000);
+              }}
             />
           )}
         </div>
@@ -480,6 +480,18 @@ export function App() {
           settings={settings}
           onUpdateSettings={(newPartial) => setSettings({ ...settings, ...newPartial })}
           onClose={() => setMonitorVisible(false)}
+          onSelectPriorityFilter={(p) => {
+            setMonitorPriorityFilter(p === 'all' ? null : p);
+            setCurrentView('today');
+            setToastMessage(p === 'all' ? '已重置优先级筛选' : `🔍 已通过 Monitor 看板筛选 ${p} 优先级任务`);
+            setTimeout(() => setToastMessage(null), 3000);
+          }}
+          onSelectDateFilter={(rangeKey) => {
+            setMonitorClosedFilter(rangeKey);
+            setCurrentView('today');
+            setToastMessage(`🔍 已通过 Monitor 看板筛选时间维度: ${rangeKey}`);
+            setTimeout(() => setToastMessage(null), 3000);
+          }}
         />
       ) : (
         /* Floating Sticky Toggle Button on Right Edge when Sidebar is Closed */

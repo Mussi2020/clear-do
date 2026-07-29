@@ -49,12 +49,14 @@ export function parseQuickAddInput(
     text = text.replace(/^\/(p|project)(\s+|$)/i, '');
   }
 
-  // 2. Extract Source tag (!Teams, !Email, !Ticket, !Meeting, !Other)
-  const sourceRegex = /!(Teams|Email|Ticket|Meeting|Other|邮件|工单|会议|其他)/i;
+  // 2. Extract Source tag (!Teams, !WeCom, !PhoneChat, !Email, !Ticket, !Meeting, !Other, etc.)
+  const sourceRegex = /!(Teams|WeCom|PhoneChat|Phone|Chat|Email|Ticket|Meeting|Other|企业微信|企微|电话|聊天|邮件|工单|会议|其他)/i;
   const sourceMatch = text.match(sourceRegex);
   if (sourceMatch) {
     const rawSrc = sourceMatch[1].toLowerCase();
     if (rawSrc.includes('teams')) source = 'Teams';
+    else if (rawSrc.includes('wecom') || rawSrc.includes('企业微信') || rawSrc.includes('企微')) source = 'WeCom';
+    else if (rawSrc.includes('phone') || rawSrc.includes('chat') || rawSrc.includes('电话') || rawSrc.includes('聊天')) source = 'PhoneChat';
     else if (rawSrc.includes('email') || rawSrc.includes('邮件')) source = 'Email';
     else if (rawSrc.includes('ticket') || rawSrc.includes('工单')) source = 'Ticket';
     else if (rawSrc.includes('meeting') || rawSrc.includes('会议')) source = 'Meeting';

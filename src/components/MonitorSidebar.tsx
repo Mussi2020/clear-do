@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Plus, ChevronRight, BarChart2, PieChart as PieIcon, RefreshCw, LayoutGrid } from 'lucide-react';
-import { TaskItemData, MonitorWidgetType, SettingsState, LanguageCode } from '../types';
+import { X, Plus, ChevronRight, BarChart2, RefreshCw, Filter, PieChart } from 'lucide-react';
+import { TaskItemData, MonitorWidgetType, SettingsState, TaskPriority } from '../types';
 import { getTodayStr } from '../utils/dateUtils';
 import { t } from '../utils/i18n';
 
@@ -9,6 +9,8 @@ interface MonitorSidebarProps {
   settings: SettingsState;
   onUpdateSettings: (newSettings: Partial<SettingsState>) => void;
   onClose: () => void;
+  onSelectPriorityFilter?: (priority: TaskPriority | 'all') => void;
+  onSelectDateFilter?: (rangeKey: string) => void;
 }
 
 export const MonitorSidebar: React.FC<MonitorSidebarProps> = ({
@@ -16,9 +18,13 @@ export const MonitorSidebar: React.FC<MonitorSidebarProps> = ({
   settings,
   onUpdateSettings,
   onClose,
+  onSelectPriorityFilter,
+  onSelectDateFilter,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [activePriority, setActivePriority] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   const activeWidgets = settings.activeWidgets || [
@@ -121,6 +127,52 @@ export const MonitorSidebar: React.FC<MonitorSidebarProps> = ({
   const maxThisMonth = Math.max(createdThisMonth, closedThisMonth, 1);
   const maxRolled = Math.max(numRolled, totalDaysRolled, 1);
 
+  const handlePriorityClick = (p: TaskPriority | 'all') => {
+    const nextP = activePriority === p ? null : p;
+    setActivePriority(nextP);
+    if (onSelectPriorityFilter) {
+      onSelectPriorityFilter(nextP ? p : 'all');
+    }
+  };
+
+  /**
+   * Helper to render dynamic progress bar with adaptive font contrast & click filter action
+   */
+  const renderProgressBar = (val: number, maxVal: number, label: string, onClick?: () => void) => {
+    const pct = maxVal > 0 && val > 0 ? (val / maxVal) * 100 : 0;
+    const isHighPct = pct >= 30;
+
+    return (
+      <div
+        onClick={onClick}
+        className={`flex items-center gap-2 ${onClick ? 'cursor-pointer group/bar' : ''}`}
+        title={onClick ? `点击快速筛选 ${label} 相关的任务` : undefined}
+      >
+        <span className="w-16 text-[10px] text-slate-600 text-right shrink-0 group-hover/bar:text-slate-900 group-hover/bar:font-bold transition-all">
+          {label}
+        </span>
+        <div className="flex-1 bg-slate-300/80 rounded-xs h-5 relative flex items-center overflow-hidden border border-slate-300/90 shadow-2xs">
+          {pct > 0 && (
+            <div
+              className="bg-[#CC0000] h-full transition-all duration-300"
+              style={{ width: `${pct}%` }}
+            />
+          )}
+          {/* Dynamic Contrast Text Logic */}
+          <span
+            className={`absolute text-[10px] font-extrabold transition-all ${
+              isHighPct
+                ? 'right-2 text-white drop-shadow-xs'
+                : 'left-2 text-slate-800'
+            }`}
+          >
+            {val}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <aside
       ref={sidebarRef}
@@ -134,16 +186,36 @@ export const MonitorSidebar: React.FC<MonitorSidebarProps> = ({
         title="拖拽可调节侧边 Monitor 宽度"
       />
 
-      {/* Header Bar */}
+      {/* Header Bar with Functional Icons */}
       <div className="p-3 bg-[#E0E0E0] border-b border-slate-300 flex items-center justify-between shadow-2xs">
         <div className="flex items-center gap-1.5">
-          <BarChart2 className="w-4 h-4 text-[#800020]" />
+          <button
+            onClick={() => {
+              setRefreshKey((prev) => prev + 1);
+              if (onSelectPriorityFilter) onSelectPriorityFilter('all');
+            }}
+            className="p-1 hover:bg-slate-300 rounded text-[#800020] transition-colors cursor-pointer"
+            title="刷新与同步看板统计数据"
+          >
+            <BarChart2 className="w-4 h-4 text-[#800020]" />
+          </button>
           <span className="font-extrabold text-xs tracking-tight text-[#4A0012]">
             {t(settings.language, 'monitorTitle')}
           </span>
         </div>
 
         <div className="flex items-center gap-1.5 relative">
+          <button
+            onClick={() => {
+              setRefreshKey((prev) => prev + 1);
+              if (onSelectPriorityFilter) onSelectPriorityFilter('all');
+            }}
+            className="p-1 hover:bg-slate-300 rounded text-slate-600 cursor-pointer"
+            title="重新计算看板数据"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-slate-700 hover:rotate-180 transition-transform duration-300" />
+          </button>
+
           {availableToAdd.length > 0 && (
             <div>
               <button
@@ -181,7 +253,7 @@ export const MonitorSidebar: React.FC<MonitorSidebarProps> = ({
       </div>
 
       {/* Widgets Area */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3.5 text-xs">
+      <div key={refreshKey} className="flex-1 overflow-y-auto p-3 space-y-3.5 text-xs">
         {activeWidgets.map((widgetKey) => {
           if (widgetKey === 'today') {
             return (
@@ -192,35 +264,13 @@ export const MonitorSidebar: React.FC<MonitorSidebarProps> = ({
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
-                <h4 className="font-extrabold text-sm text-[#3B0211] mb-2 tracking-tight">
-                  Task Today
+                <h4 className="font-extrabold text-sm text-[#3B0211] mb-2 tracking-tight flex items-center justify-between">
+                  <span>Task Today</span>
+                  <span className="text-[10px] text-slate-500 font-normal">点击条形图筛选</span>
                 </h4>
                 <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="w-14 text-[10px] text-slate-600 text-right shrink-0">Created</span>
-                    <div className="flex-1 bg-slate-200 h-5 relative flex items-center overflow-hidden">
-                      <div
-                        className="bg-[#D00000] h-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, Math.max(8, (createdTodayCount / maxToday) * 100))}%` }}
-                      />
-                      <span className="absolute right-2 text-white font-bold text-[10px]">
-                        {createdTodayCount}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="w-14 text-[10px] text-slate-600 text-right shrink-0">Closed</span>
-                    <div className="flex-1 bg-slate-200 h-5 relative flex items-center overflow-hidden">
-                      <div
-                        className="bg-[#CC0000] h-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, Math.max(8, (closedTodayCount / maxToday) * 100))}%` }}
-                      />
-                      <span className="absolute right-2 text-white font-bold text-[10px]">
-                        {closedTodayCount}
-                      </span>
-                    </div>
-                  </div>
+                  {renderProgressBar(createdTodayCount, maxToday, 'Created', () => onSelectDateFilter?.('today'))}
+                  {renderProgressBar(closedTodayCount, maxToday, 'Closed', () => onSelectDateFilter?.('closed_today'))}
                 </div>
               </div>
             );
@@ -239,31 +289,8 @@ export const MonitorSidebar: React.FC<MonitorSidebarProps> = ({
                   Task <span className="font-normal text-xs text-slate-600">last month</span>
                 </h4>
                 <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="w-14 text-[10px] text-slate-600 text-right shrink-0">Created</span>
-                    <div className="flex-1 bg-slate-200 h-5 relative flex items-center overflow-hidden">
-                      <div
-                        className="bg-[#CC0000] h-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, Math.max(8, (createdLastMonth / maxLastMonth) * 100))}%` }}
-                      />
-                      <span className="absolute right-2 text-white font-bold text-[10px]">
-                        {createdLastMonth}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="w-14 text-[10px] text-slate-600 text-right shrink-0">Closed</span>
-                    <div className="flex-1 bg-slate-200 h-5 relative flex items-center overflow-hidden">
-                      <div
-                        className="bg-[#CC0000] h-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, Math.max(8, (closedLastMonth / maxLastMonth) * 100))}%` }}
-                      />
-                      <span className="absolute right-2 text-white font-bold text-[10px]">
-                        {closedLastMonth}
-                      </span>
-                    </div>
-                  </div>
+                  {renderProgressBar(createdLastMonth, maxLastMonth, 'Created')}
+                  {renderProgressBar(closedLastMonth, maxLastMonth, 'Closed')}
                 </div>
               </div>
             );
@@ -282,31 +309,8 @@ export const MonitorSidebar: React.FC<MonitorSidebarProps> = ({
                   Task <span className="font-normal text-xs text-slate-600">this month</span>
                 </h4>
                 <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="w-14 text-[10px] text-slate-600 text-right shrink-0">Created</span>
-                    <div className="flex-1 bg-slate-200 h-5 relative flex items-center overflow-hidden">
-                      <div
-                        className="bg-[#CC0000] h-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, Math.max(8, (createdThisMonth / maxThisMonth) * 100))}%` }}
-                      />
-                      <span className="absolute right-2 text-white font-bold text-[10px]">
-                        {createdThisMonth}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="w-14 text-[10px] text-slate-600 text-right shrink-0">Closed</span>
-                    <div className="flex-1 bg-slate-200 h-5 relative flex items-center overflow-hidden">
-                      <div
-                        className="bg-[#CC0000] h-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, Math.max(8, (closedThisMonth / maxThisMonth) * 100))}%` }}
-                      />
-                      <span className="absolute right-2 text-white font-bold text-[10px]">
-                        {closedThisMonth}
-                      </span>
-                    </div>
-                  </div>
+                  {renderProgressBar(createdThisMonth, maxThisMonth, 'Created', () => onSelectDateFilter?.('this_month'))}
+                  {renderProgressBar(closedThisMonth, maxThisMonth, 'Closed', () => onSelectDateFilter?.('closed_month'))}
                 </div>
               </div>
             );
@@ -314,7 +318,7 @@ export const MonitorSidebar: React.FC<MonitorSidebarProps> = ({
 
           if (widgetKey === 'open_by_priority') {
             return (
-              <div key="open_by_priority" className="bg-[#F5F5F5] border-2 border-red-600 p-3 rounded relative group shadow-xs">
+              <div key="open_by_priority" className="bg-[#DCDCDC] p-2.5 rounded border border-slate-300/80 shadow-2xs relative group">
                 <button
                   onClick={() => removeWidget('open_by_priority')}
                   className="absolute right-1 top-1 text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
@@ -322,70 +326,23 @@ export const MonitorSidebar: React.FC<MonitorSidebarProps> = ({
                   <X className="w-3.5 h-3.5" />
                 </button>
 
-                <h4 className="font-extrabold text-sm text-[#3B0211] mb-2 tracking-tight">
-                  Open <span className="text-[#3B0211]">Task</span> <span className="font-normal text-xs text-slate-600">by priority</span>
+                <h4 className="font-extrabold text-sm text-[#3B0211] mb-2 tracking-tight flex items-center justify-between">
+                  <span>Open <span className="text-[#3B0211]">Task</span> <span className="font-normal text-xs text-slate-600">by priority</span></span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-600 font-extrabold">Total: {totalOpen}</span>
+                    {activePriority && (
+                      <span className="text-[10px] bg-red-700 text-white px-1.5 py-0.2 rounded font-bold">
+                        {activePriority}
+                      </span>
+                    )}
+                  </div>
                 </h4>
 
-                {/* Donut Chart SVG */}
-                <div className="flex justify-center my-3">
-                  <svg className="w-24 h-24 transform -rotate-90" viewBox="0 0 36 36">
-                    <path
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      fill="none"
-                      stroke="#CCCCCC"
-                      strokeWidth="5"
-                    />
-                    <path
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      fill="none"
-                      stroke="#777777"
-                      strokeWidth="5"
-                      strokeDasharray={`${(highPriority / totalOpen) * 100}, 100`}
-                    />
-                    <path
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      fill="none"
-                      stroke="#B91C1C"
-                      strokeWidth="5"
-                      strokeDasharray={`${(mediumPriority / totalOpen) * 100}, 100`}
-                      strokeDashoffset={`-${(highPriority / totalOpen) * 100}`}
-                    />
-                  </svg>
-                </div>
-
-                {/* Legend List */}
-                <div className="space-y-1 text-xs font-medium text-slate-800 border-t border-slate-200 pt-2">
-                  <div className="flex items-center justify-between p-1 bg-red-100 rounded border border-red-200">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 bg-black rounded-2xs inline-block" />
-                      <span>1: Very High / High</span>
-                    </span>
-                    <span className="font-bold">{highPriority}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-1 hover:bg-slate-100 rounded">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 bg-[#555] rounded-2xs inline-block" />
-                      <span>2: High</span>
-                    </span>
-                    <span className="font-bold">0</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-1 hover:bg-slate-100 rounded">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 bg-[#888] rounded-2xs inline-block" />
-                      <span>3: Medium</span>
-                    </span>
-                    <span className="font-bold">{mediumPriority}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-1 hover:bg-slate-100 rounded">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 bg-slate-300 border border-slate-400 rounded-2xs inline-block" />
-                      <span>4: Low</span>
-                    </span>
-                    <span className="font-bold">{lowPriority}</span>
-                  </div>
+                {/* Priority Progress Bars with Click-Filter */}
+                <div className="space-y-1.5 pt-1">
+                  {renderProgressBar(highPriority, totalOpen || 1, '1: High', () => handlePriorityClick('High'))}
+                  {renderProgressBar(mediumPriority, totalOpen || 1, '2: Medium', () => handlePriorityClick('Medium'))}
+                  {renderProgressBar(lowPriority, totalOpen || 1, '3: Low', () => handlePriorityClick('Low'))}
                 </div>
               </div>
             );
@@ -404,31 +361,8 @@ export const MonitorSidebar: React.FC<MonitorSidebarProps> = ({
                   Task <span className="font-normal text-xs text-slate-600">rolled</span>
                 </h4>
                 <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="w-20 text-[10px] text-slate-600 text-right shrink-0"># of rolled</span>
-                    <div className="flex-1 bg-slate-200 h-5 relative flex items-center overflow-hidden">
-                      <div
-                        className="bg-[#CC0000] h-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, Math.max(8, (numRolled / maxRolled) * 100))}%` }}
-                      />
-                      <span className="absolute right-2 text-white font-bold text-[10px]">
-                        {numRolled}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="w-20 text-[10px] text-slate-600 text-right shrink-0">days of rolled</span>
-                    <div className="flex-1 bg-slate-200 h-5 relative flex items-center overflow-hidden">
-                      <div
-                        className="bg-[#CC0000] h-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, Math.max(8, (totalDaysRolled / maxRolled) * 100))}%` }}
-                      />
-                      <span className="absolute right-2 text-white font-bold text-[10px]">
-                        {totalDaysRolled}
-                      </span>
-                    </div>
-                  </div>
+                  {renderProgressBar(numRolled, maxRolled, '# of rolled')}
+                  {renderProgressBar(totalDaysRolled, maxRolled, 'days of rolled')}
                 </div>
               </div>
             );

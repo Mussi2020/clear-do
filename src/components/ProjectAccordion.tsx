@@ -206,18 +206,25 @@ export const ProjectAccordion: React.FC<ProjectAccordionProps> = ({
               </button>
             </div>
           ) : (
-            subTasks.map((subTask) => (
-              <TaskItem
-                key={subTask.id}
-                task={subTask}
-                parentProjectName={project.title}
-                onUpdateStatus={onUpdateStatus}
-                onDeleteTask={onDeleteTask}
-                onEditTask={onEditTask}
-                onOpenHistory={onOpenHistory}
-                onUpdateTask={onUpdateTask}
-              />
-            ))
+            [...subTasks]
+              .sort((a, b) => {
+                const aDone = a.status === 'Done';
+                const bDone = b.status === 'Done';
+                if (aDone !== bDone) return aDone ? 1 : -1;
+                return 0;
+              })
+              .map((subTask) => (
+                <TaskItem
+                  key={subTask.id}
+                  task={subTask}
+                  parentProjectName={project.title}
+                  onUpdateStatus={onUpdateStatus}
+                  onDeleteTask={onDeleteTask}
+                  onEditTask={onEditTask}
+                  onOpenHistory={onOpenHistory}
+                  onUpdateTask={onUpdateTask}
+                />
+              ))
           )}
         </div>
       )}

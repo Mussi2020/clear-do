@@ -32,7 +32,20 @@ export const ExportView: React.FC<ExportViewProps> = ({ items, onImportItems }) 
     downloadCSVFile(filename, csvContent);
   };
 
-  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExportJSON = () => {
+    const jsonStr = JSON.stringify(previewItems, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `FlowTask_Backup_${getTodayStr()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -48,18 +61,18 @@ export const ExportView: React.FC<ExportViewProps> = ({ items, onImportItems }) 
             }
             setImportStatus({
               type: 'success',
-              message: `成功解析并导入 ${parsed.length} 条任务数据（已完成向下兼容映射与合并）。`,
+              message: `成功解析并导入 ${parsed.length} 条任务数据（含需求方、处理人、备注等完整字段）。`,
             });
           } else {
             setImportStatus({
               type: 'error',
-              message: '未能从 CSV 文件中解析出有效的任务数据。',
+              message: '未能从文件中解析出有效的任务数据，请检查文件内容。',
             });
           }
         } catch (err) {
           setImportStatus({
             type: 'error',
-            message: 'CSV 文件解析失败，请检查数据格式。',
+            message: '文件解析失败，请检查 CSV/JSON 数据格式。',
           });
         }
       }
@@ -99,8 +112,8 @@ export const ExportView: React.FC<ExportViewProps> = ({ items, onImportItems }) 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv"
-            onChange={handleCsvUpload}
+            accept=".csv,.json"
+            onChange={handleFileUpload}
             className="hidden"
           />
 
@@ -109,7 +122,7 @@ export const ExportView: React.FC<ExportViewProps> = ({ items, onImportItems }) 
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
           >
             <Upload className="w-4 h-4" />
-            <span>选择 CSV 文件导入</span>
+            <span>选择 CSV 或 JSON 备份导入</span>
           </button>
         </div>
 
@@ -229,15 +242,27 @@ export const ExportView: React.FC<ExportViewProps> = ({ items, onImportItems }) 
             </label>
           </div>
 
-          {/* Export Action Trigger Button */}
-          <button
-            onClick={handleExportCSV}
-            disabled={previewItems.length === 0}
-            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>导出 UTF-8 CSV 报表文件 ({previewItems.length} 条)</span>
-          </button>
+          {/* Export Action Trigger Buttons */}
+          <div className="space-y-2 pt-2 border-t border-slate-100">
+            <button
+              onClick={handleExportCSV}
+              disabled={previewItems.length === 0}
+              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>导出 UTF-8 CSV 报表 ({previewItems.length} 条)</span>
+            </button>
+
+            <button
+              onClick={handleExportJSON}
+              disabled={previewItems.length === 0}
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              title="全量数据备份，跨设备迁移首选"
+            >
+              <Download className="w-4 h-4" />
+              <span>导出 JSON 100% 完整备份文件</span>
+            </button>
+          </div>
         </div>
 
         {/* Live Data Preview Table */}
@@ -246,7 +271,7 @@ export const ExportView: React.FC<ExportViewProps> = ({ items, onImportItems }) 
             <h2 className="text-base font-bold text-slate-800">
               数据导出一览 Preview ({previewItems.length} 项)
             </h2>
-            <span className="text-xs text-slate-400">已自动嵌入中文 BOM 标识</span>
+            <span className="text-xs text-slate-400">已包含需求方、处理人及备注等完整属性</span>
           </div>
 
           <div className="overflow-x-auto">
@@ -255,26 +280,38 @@ export const ExportView: React.FC<ExportViewProps> = ({ items, onImportItems }) 
                 <tr>
                   <th className="px-3 py-2">类型</th>
                   <th className="px-3 py-2">标题名称</th>
+                  <th className="px-3 py-2">需求方</th>
+                  <th className="px-3 py-2">处理人</th>
+                  <th className="px-3 py-2">备注说明</th>
                   <th className="px-3 py-2">来源</th>
                   <th className="px-3 py-2">优先级</th>
                   <th className="px-3 py-2">状态</th>
-                  <th className="px-3 py-2">顺延次数</th>
+                  <th className="px-3 py-2">顺延</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {previewItems.slice(0, 10).map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50">
-                    <td className="px-3 py-2.5 font-medium text-slate-500">
+                    <td className="px-3 py-2.5 font-medium text-slate-500 shrink-0">
                       {item.type === 'project' ? '📁 Project' : '✅ Task'}
                     </td>
-                    <td className="px-3 py-2.5 font-semibold text-slate-800 max-w-[200px] truncate">
+                    <td className="px-3 py-2.5 font-semibold text-slate-800 max-w-[160px] truncate">
                       {item.title}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-600 max-w-[100px] truncate">
+                      {item.requester || '-'}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-600 max-w-[100px] truncate">
+                      {item.handler || '-'}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-500 max-w-[140px] truncate">
+                      {item.description || '-'}
                     </td>
                     <td className="px-3 py-2.5">{item.source}</td>
                     <td className="px-3 py-2.5">{item.priority}</td>
                     <td className="px-3 py-2.5">{item.status}</td>
                     <td className="px-3 py-2.5 font-bold text-amber-600">
-                      {item.rollover_count > 0 ? `${item.rollover_count} 次` : '0'}
+                      {item.rollover_count > 0 ? `${item.rollover_count}次` : '0'}
                     </td>
                   </tr>
                 ))}

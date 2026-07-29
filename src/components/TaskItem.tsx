@@ -47,6 +47,8 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
   const sourceMacaronStyles: Record<string, string> = {
     Teams: 'bg-[#E0E7FF] text-[#4338CA]',
+    WeCom: 'bg-[#DCFCE7] text-[#15803D]',
+    PhoneChat: 'bg-[#FFEDD5] text-[#C2410C]',
     Email: 'bg-[#DBEAFE] text-[#1E40AF]',
     Ticket: 'bg-[#DCFCE7] text-[#166534]',
     Meeting: 'bg-[#F3E8FF] text-[#6B21A8]',
@@ -146,6 +148,8 @@ export const TaskItem: React.FC<TaskItemProps> = ({
               title="点击更改来源"
             >
               <option value="Teams">TEAMS</option>
+              <option value="WeCom">企业微信</option>
+              <option value="PhoneChat">电话/聊天</option>
               <option value="Email">EMAIL</option>
               <option value="Ticket">TICKET</option>
               <option value="Meeting">MEETING</option>
